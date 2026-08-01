@@ -34,6 +34,12 @@ and get a WWB CSV from a browser — including a phone — without touching the
 Tk window, at a real gig.** Until that has happened, the web UI is unproven
 no matter how good the mock tests look.
 
+Progress against it: **bench-verified on real hardware 2026-08-01** — WSUB1G
+on `/dev/cu.usbserial-210`, disjoint H5 + J10 scan, 1890 bins exported, zero
+bins in the skipped 542–584 MHz gap, every bin on the 25 kHz grid, strongest
+return 585.8 MHz at −81.1 dBm (Bay Area UHF broadcast). Still not gig-proven:
+no phone-at-a-show run, and Alex has not driven a coordination job on it.
+
 ## Hardware reality
 
 The RF Explorer is a **USB serial device**. Whatever runs the scan must be
