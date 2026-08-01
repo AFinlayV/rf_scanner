@@ -64,7 +64,23 @@ function render() {
   $("log").textContent = (s.log || []).join("\n");
   $("log").scrollTop = $("log").scrollHeight;
 
+  // Keep the empty-plot message honest as state changes, not only when
+  // the plot redraws.
+  if (!s.bin_count) $("plot-note").textContent = emptyMessage();
+
   updateEstimate();
+}
+
+// The empty plot must never contradict the device panel — telling someone
+// to "connect the RF Explorer" while it says Connected is how a working
+// app looks broken.
+function emptyMessage() {
+  const s = STATE;
+  if (!s) return "Loading…";
+  if (!s.connected) return "No data yet — connect the RF Explorer to begin.";
+  if (s.scanning && !s.pass_count) return "Scanning — first pass in progress…";
+  if (s.scanning) return "Scanning…";
+  return "Connected. Choose bands or a range, then press Start Scan.";
 }
 
 function adoptServerSelection() {
@@ -303,7 +319,7 @@ async function drawSpectrum() {
   paint(points, spans);
   $("plot-note").textContent = points.length
     ? `${points.length} bins · ${mode} across ${passes} pass${passes === 1 ? "" : "es"}`
-    : "No data yet — connect the RF Explorer and start a scan.";
+    : emptyMessage();
 }
 
 function paint(points, spans) {

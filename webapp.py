@@ -86,6 +86,12 @@ class Session:
         self.stop_event = threading.Event()
         self.worker: threading.Thread | None = None
 
+        # The engine reports through this queue. It is drained by the
+        # pusher thread, NOT by the worker — the worker is blocked inside
+        # scan_pass for a whole pass, so draining there would freeze the
+        # log and progress bar for ~20s at a time.
+        self.msg_q: queue.Queue = queue.Queue()
+
         self.port = ""
         self.connected = False
         self.scanning = False
@@ -152,29 +158,29 @@ def push_state() -> None:
 
 # ────────────────────────────────────────────────────────────── scan worker ──
 
-def scan_worker(ranges, chunk, iterations):
-    """Mirrors the Tk app's scan loop, but publishes to the SSE bus.
+def drain_messages():
+    """Fold queued engine messages into session state. Called ~2×/sec by
+    the pusher thread so progress and log stay live *during* a pass."""
+    while True:
+        try:
+            m = S.msg_q.get_nowait()
+        except queue.Empty:
+            return
+        kind = m.get("type")
+        if kind == "log":
+            S.write_log(m["text"])
+        elif kind == "progress":
+            with S.lock:
+                S.progress = m.get("value", 0)
+                S.status = m.get("text", "")
 
-    The engine reports through a plain queue; this drains it and folds the
-    messages into session state.
-    """
-    msg_q: queue.Queue = queue.Queue()
+
+def scan_worker(ranges, chunk, iterations):
+    """Mirrors the Tk app's scan loop, but publishes to the SSE bus."""
+    msg_q = S.msg_q
     pass_num = 0
     start_env, end_env = ranges[0][0], ranges[-1][1]
-
-    def drain():
-        while True:
-            try:
-                m = msg_q.get_nowait()
-            except queue.Empty:
-                return
-            kind = m.get("type")
-            if kind == "log":
-                S.write_log(m["text"])
-            elif kind == "progress":
-                with S.lock:
-                    S.progress = m.get("value", 0)
-                    S.status = m.get("text", "")
+    drain = drain_messages
 
     try:
         while not S.stop_event.is_set():
@@ -210,10 +216,11 @@ def scan_worker(ranges, chunk, iterations):
 
 
 def state_pusher():
-    """While scanning, nudge clients ~2×/sec so progress and log stay live."""
+    """Drain engine messages and nudge clients ~2×/sec while scanning."""
     while True:
         time.sleep(0.5)
         if S.scanning:
+            drain_messages()
             push_state()
 
 
@@ -407,6 +414,34 @@ def api_scan_stop():
     with S.lock:
         S.status = "Stopping after this chunk…"
     S.write_log("Stop requested.")
+
+    def force_unblock():
+        """Stopping is cooperative — the engine checks stop_event between
+        sweeps. If the radio has wedged, the worker is stuck inside a
+        blocking serial read and will never see it. Closing the port makes
+        that read raise, which unwinds the thread. Without this the whole
+        app is unrecoverable without killing the process, which is not a
+        thing to discover at a gig.
+        """
+        worker = S.worker
+        if worker:
+            worker.join(timeout=8.0)
+        if worker and worker.is_alive():
+            S.write_log("Scan did not stop — device wedged. "
+                        "Closing the port to unblock it.")
+            try:
+                if S.scanner:
+                    S.scanner.disconnect()
+            except Exception:                       # noqa: BLE001
+                pass
+            with S.lock:
+                S.connected = False
+                S.port = ""
+                S.scanning = False
+                S.status = "Force-stopped — reconnect the device"
+            push_state()
+
+    threading.Thread(target=force_unblock, daemon=True).start()
     push_state()
     return jsonify({"ok": True})
 
