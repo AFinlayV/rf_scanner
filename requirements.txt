@@ -1,0 +1,8 @@
+pyserial>=3.5
+RFExplorer>=1.28.1807.1
+
+# Core (statistical scan engine)
+numpy>=1.21
+
+# Live Mode (spectrum/waterfall display)
+matplotlib>=3.5
