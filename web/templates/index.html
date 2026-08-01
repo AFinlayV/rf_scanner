@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header>
+  <h1>{{ title }} <small>{{ version }}</small></h1>
+  <div class="conn">
+    <span id="live-dot" title="live connection">●</span>
+    <span id="conn-state">connecting…</span>
+  </div>
+</header>
+
+<main>
+
+  <section class="panel">
+    <h2>Device</h2>
+    <div class="row">
+      <select id="port"></select>
+      <button id="refresh-ports" class="ghost">↻</button>
+      <button id="connect">Connect</button>
+      <button id="disconnect" class="ghost" hidden>Disconnect</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Spectrum</h2>
+    <div class="row">
+      <button id="pick-bands">Bands…</button>
+      <select id="preset"><option value="">Preset…</option></select>
+    </div>
+    <div id="band-summary" class="summary" hidden></div>
+    <div class="row grid2">
+      <label>Start (MHz)<input id="start" type="number" step="0.025" value="470"></label>
+      <label>End (MHz)<input id="end" type="number" step="0.025" value="608"></label>
+      <label>Chunk (MHz)<input id="chunk" type="number" step="0.5" value="6"></label>
+      <label>Iterations<input id="iterations" type="number" min="1" max="50" value="1"></label>
+    </div>
+    <div id="estimate" class="hint"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Scan</h2>
+    <div class="row">
+      <button id="start-scan" disabled>Start Scan</button>
+      <button id="stop-scan" class="danger" hidden>Stop</button>
+    </div>
+    <div class="progress"><div id="progress-bar"></div></div>
+    <div id="status" class="hint">—</div>
+    <div id="noise" class="hint"></div>
+  </section>
+
+  <section class="panel wide">
+    <div class="row spread">
+      <h2>Spectrum plot</h2>
+      <div class="row">
+        <select id="export-mode">
+          <option value="P20" selected>P20 — conservative</option>
+          <option value="P50">P50 — median</option>
+          <option value="P95">P95 — worst case</option>
+          <option value="MAX">Max hold</option>
+        </select>
+        <button id="download" class="ghost">Download CSV</button>
+        <button id="save-desktop" class="ghost">Save to Desktop</button>
+      </div>
+    </div>
+    <canvas id="plot" width="1200" height="420"></canvas>
+    <div id="plot-note" class="hint"></div>
+  </section>
+
+  <section class="panel wide">
+    <h2>Log</h2>
+    <pre id="log"></pre>
+  </section>
+
+</main>
+
+<!-- Band picker -->
+<div id="band-modal" class="modal" hidden>
+  <div class="modal-box">
+    <div class="row spread">
+      <h2>Select bands</h2>
+      <button id="band-close" class="ghost">✕</button>
+    </div>
+    <label class="inline"><input type="checkbox" id="us-only" checked>
+      US-usable only (post-600 MHz repack)</label>
+    <div id="band-list"></div>
+    <div id="band-modal-summary" class="summary"></div>
+    <div class="row spread">
+      <button id="band-clear" class="ghost">Clear</button>
+      <button id="band-apply">Scan these bands</button>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

@@ -4,5 +4,8 @@ RFExplorer>=1.28.1807.1
 # Core (statistical scan engine)
 numpy>=1.21
 
+# Web UI (webapp.py)
+flask>=3
+
 # Live Mode (spectrum/waterfall display)
 matplotlib>=3.5

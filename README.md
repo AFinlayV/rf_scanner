@@ -17,6 +17,32 @@ Scans the UHF/sub-GHz band in narrow chunks for maximum sensitivity, accumulates
 - **Live Mode** — separate real-time spectrum + waterfall display for monitoring
 - **WWB/Soundbase CSV export** — headerless two-column format (freq MHz, amp dBm)
 
+## Two frontends
+
+**Web UI (preferred)** — `python3 webapp.py`, then open
+`http://localhost:8080`. Works from a phone, tablet or another laptop on the
+LAN or over Tailscale, which is the point: you can drive a scan from across
+the room. Same engine, same band picker, live plot, CSV download.
+
+**Desktop UI** — `python3 rf_scanner.py`. The original Tk app. Still fully
+working and still the home of Live Mode; kept as the fallback.
+
+> The RF Explorer is a USB device, so **whichever UI you use, the process
+> must run on the machine the radio is plugged into.** The web UI just moves
+> the *screen*, not the radio — a remote server cannot scan.
+
+### Running the web UI
+
+```bash
+python3 webapp.py                       # http://localhost:8080
+PORT=9000 python3 webapp.py             # different port
+PASSCODE=hunter2 python3 webapp.py      # shared passcode, for anything exposed
+```
+
+Find your address for other devices with `ipconfig getifaddr en0`, or use the
+Mac's Tailscale name. Set a `PASSCODE` for anything reachable beyond a
+trusted tailnet.
+
 ## Requirements
 
 - macOS (tested on macOS 15 / Sequoia)

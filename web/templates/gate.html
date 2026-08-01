@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Passcode</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="gate">
+  <form method="post">
+    <input type="password" name="passcode" placeholder="passcode" autofocus>
+    {% if error %}<p class="error">nope</p>{% endif %}
+  </form>
+</body>
+</html>

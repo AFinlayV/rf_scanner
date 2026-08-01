@@ -1,0 +1,70 @@
+# RF Scanner
+
+**Class:** standing rig — a tool used at every wireless coordination gig,
+not a single-serving build. Maintained, versioned, not frozen.
+**Riders:** `_roadcase/riders/rf-coordination.md` (not written yet — harvest
+after the web UI has run a real show).
+**Doctrine:** `_roadcase/DOCTRINE.md`.
+
+## Shape
+
+```
+scanner.py stats.py export.py bands.py constants.py   the engine — no UI imports
+ui.py live_mode.py rf_scanner.py                      Tk desktop frontend
+webapp.py web/                                        browser frontend
+tests/                                                48 passing, engine-level
+```
+
+**The engine imports no tkinter and no matplotlib, and that must stay true.**
+It is what lets two frontends exist without duplicating logic. Anything that
+would put a widget import into `scanner.py`/`stats.py`/`export.py`/`bands.py`
+is wrong — push it into a frontend instead.
+
+## Frontends
+
+The Tk app (`rf_scanner.py`) has macOS focus and scroll bugs: the window
+needs a titlebar click before it accepts input, panes don't scroll. That is
+why the web UI exists.
+
+**Both work. Do not delete `ui.py` until the web UI has survived a real
+gig** — the desktop app is the fallback if something fails at a show.
+
+**v1 acceptance (2026-08-01): done when Alex can run a band-multiselect scan
+and get a WWB CSV from a browser — including a phone — without touching the
+Tk window, at a real gig.** Until that has happened, the web UI is unproven
+no matter how good the mock tests look.
+
+## Hardware reality
+
+The RF Explorer is a **USB serial device**. Whatever runs the scan must be
+physically attached to it. The web UI is served from that same machine (the
+Mac, or a box at the gig) and reached over LAN/Tailscale. **The VPS can
+never run a scan** — it has no radio. Don't design toward hosting it there.
+
+## Do not build
+
+- **No second frontend framework.** The web UI is vanilla JS + a canvas.
+  No React, no build step. It is ~450 lines; keep it that size.
+- **No Live Mode / waterfall in the web UI** without a decision written
+  here first. Deliberately left in the Tk app for v1.
+- **No multi-user or multi-device session model.** One operator, one radio,
+  one scan. The single global `Session` in `webapp.py` is correct.
+- **No band data invented from memory.** Every entry in `bands.py` traces to
+  a published source (see its SOURCES block). Wrong band edges mean scanning
+  the wrong spectrum at a show. Ask Alex or cite a source.
+- No hosting the scan on the VPS (see above).
+
+## Band data
+
+Band letters mean different spectrum on different product lines (SLX `H5` ≠
+ULX-D `H50`), so `family` is part of every band's identity. A band is a
+**list** of ranges, because the US 600 MHz repack split some of them
+(Shure J8 = 554–608 **+** 614–616). `scan_pass(..., ranges=[...])` takes
+that list; chunks never straddle a span boundary and overlap padding never
+spills past one.
+
+## Known state
+
+- Two tests fail and have since the baseline commit: output bins land 50 kHz
+  apart where the tests want 25 kHz (grid-snapping artifact). Exports remain
+  WWB-valid — WWB needs *at least* 25 kHz. Unresolved on purpose.
