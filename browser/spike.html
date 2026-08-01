@@ -1,0 +1,90 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>RF Explorer — Web Serial spike (P0)</title>
+<style>
+  body { background:#0f1116; color:#e6e8eb; font:15px/1.5 system-ui; max-width:840px;
+         margin:0 auto; padding:1.5rem; }
+  h1 { font-size:1.1rem; margin-bottom:.3rem; }
+  p.sub { color:#8b949e; font-size:.85rem; margin-bottom:1rem; }
+  button { font:inherit; background:#e8a33d; color:#201603; border:0; border-radius:7px;
+           padding:.55rem 1rem; font-weight:600; cursor:pointer; margin-right:.5rem; }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  input { font:inherit; background:#1e222b; color:inherit; border:1px solid #262b35;
+          border-radius:6px; padding:.45rem .55rem; width:6rem; }
+  label { color:#8b949e; font-size:.8rem; margin-right:.8rem; }
+  pre { background:#0c0e12; border:1px solid #262b35; border-radius:8px; padding:.7rem;
+        font:12px/1.5 ui-monospace,Menlo,monospace; height:22rem; overflow:auto;
+        white-space:pre-wrap; margin-top:1rem; }
+  .ok { color:#4fa96a; } .bad { color:#d16060; } .dim { color:#8b949e; }
+</style>
+
+<h1>RF Explorer — Web Serial spike</h1>
+<p class="sub">P0: prove a browser can drive the radio. Open the port, ask for config,
+set a range, read one sweep. Chrome or Edge only.</p>
+
+<div>
+  <button id="connect">Connect radio…</button>
+  <button id="sweep" disabled>Read one sweep</button>
+  <button id="disconnect" disabled>Disconnect</button>
+</div>
+<div style="margin-top:.8rem">
+  <label>Start MHz <input id="start" type="number" value="470" step="0.025"></label>
+  <label>End MHz <input id="end" type="number" value="476" step="0.025"></label>
+</div>
+
+<pre id="log"></pre>
+
+<script type="module">
+import { RFExplorer } from './rfe.js';
+
+const $ = id => document.getElementById(id);
+const logEl = $('log');
+function log(msg, cls) {
+  const t = new Date().toTimeString().slice(0, 8);
+  logEl.innerHTML += `<span class="${cls || ''}">${t}  ${msg}</span>\n`;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+if (!('serial' in navigator)) {
+  log('Web Serial is NOT available in this browser. Use Chrome or Edge.', 'bad');
+  $('connect').disabled = true;
+}
+
+const rfe = new RFExplorer(log);
+
+$('connect').onclick = async () => {
+  try {
+    $('connect').disabled = true;
+    await rfe.connect();
+    $('sweep').disabled = false;
+    $('disconnect').disabled = false;
+  } catch (e) {
+    log('connect failed: ' + e.message, 'bad');
+    $('connect').disabled = false;
+  }
+};
+
+$('sweep').onclick = async () => {
+  $('sweep').disabled = true;
+  try {
+    const a = parseFloat($('start').value), b = parseFloat($('end').value);
+    const points = await rfe.sweepOnce(a, b);
+    log(`got ${points.length} points`, 'ok');
+    const show = points.slice(0, 5).map(([f, d]) => `${f.toFixed(3)} MHz  ${d.toFixed(1)} dBm`);
+    log('  first 5:\n    ' + show.join('\n    '), 'dim');
+    const amps = points.map(p => p[1]);
+    log(`  min ${Math.min(...amps).toFixed(1)} dBm  max ${Math.max(...amps).toFixed(1)} dBm`, 'dim');
+    log(`  span ${points[0][0].toFixed(3)} – ${points[points.length-1][0].toFixed(3)} MHz`, 'dim');
+  } catch (e) {
+    log('sweep failed: ' + e.message, 'bad');
+  }
+  $('sweep').disabled = false;
+};
+
+$('disconnect').onclick = async () => {
+  await rfe.disconnect();
+  $('connect').disabled = false;
+  $('sweep').disabled = true;
+  $('disconnect').disabled = true;
+};
+</script>
