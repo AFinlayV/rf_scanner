@@ -225,6 +225,13 @@ def scan_worker(ranges, chunk, iterations):
                                 f"{' — ' + first_line if first_line else ''}")
                     with S.lock:
                         S.connected = bool(ok)
+                    if ok:
+                        # A reconnect is a fresh device session, so the next
+                        # pass must be pass 1 again — that is the only branch
+                        # that re-enables the on-device average calculator.
+                        # Without this the retry runs on a differently
+                        # configured radio than the scan started on.
+                        pass_num = 0
                     if not ok:
                         with S.lock:
                             S.status = ("Radio not answering and reconnect "
