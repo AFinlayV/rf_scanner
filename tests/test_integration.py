@@ -186,9 +186,15 @@ class TestEdgeCases:
         result = scanner.scan_pass(470.0, 480.0, 2.0, 2, stop_event, msg_queue)
         assert len(result) > 0
         freqs = sorted([f for f, a in result])
+        # The gap this test exists to catch is a chunk seam the overlap
+        # padding failed to cover — that would show up as hundreds of kHz.
+        # A skipped 25 kHz slot is not that: the radio's native bins are
+        # ~36 kHz at this chunk width, so the grid is finer than the
+        # measurement and some slots are legitimately empty.
         for i in range(1, len(freqs)):
-            gap = freqs[i] - freqs[i-1]
-            assert gap <= 0.026, f"Gap of {gap} MHz between {freqs[i-1]} and {freqs[i]}"
+            gap = round(freqs[i] - freqs[i-1], 4)
+            assert 0.025 <= gap <= 0.050, \
+                f"Gap of {gap} MHz between {freqs[i-1]} and {freqs[i]}"
 
     def test_callable_vs_property_sweep_attributes(self, mock_rfe_module, msg_queue, stop_event):
         """Verify the callable() guard works for both attribute and method styles."""

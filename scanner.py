@@ -562,6 +562,18 @@ class RFExplorerScanner:
         """Bin (freq, amp) data into step_mhz-wide bins. Ensures >= 25 kHz step for WWB.
 
         Averaging is done in linear power domain to avoid log-domain bias.
+
+        A single pass leaves some 25 kHz slots empty, and that is correct.
+        The radio returns ~112 points per sweep whatever the span, so a
+        2 MHz chunk padded by OVERLAP_MHZ to a 4 MHz sweep has ~36 kHz
+        native bins — coarser than the grid. Slots no bin landed in get no
+        row: WWB wants points *at least* 25 kHz apart, not a dense grid,
+        and interpolating would put an amplitude on the export that the
+        radio never measured. In a coordination tool an invented number
+        reads as an unoccupied channel, which is the expensive kind of
+        wrong. The honest way to fill the grid is more passes — dithered
+        chunk widths land the native bins on different frequencies each
+        pass, so an accumulated multi-pass export comes out dense.
         """
         if not points:
             return points

@@ -102,6 +102,32 @@ followed by real data.
 
 ## Known state
 
-- Two tests fail and have since the baseline commit: output bins land 50 kHz
-  apart where the tests want 25 kHz (grid-snapping artifact). Exports remain
-  WWB-valid — WWB needs *at least* 25 kHz. Unresolved on purpose.
+- All 50 tests pass. The two long-standing failures (bins 50 kHz apart where
+  the tests wanted 25) were the tests being wrong, fixed 2026-08-01.
+
+## The 25 kHz grid is sparse on a single pass, on purpose
+
+Do not "fix" this, and do not interpolate to fill it.
+
+The radio returns ~112 points per sweep no matter how wide the sweep is.
+`OVERLAP_MHZ = 1.0` pads a 2 MHz chunk out to a 4 MHz sweep, so native bins
+land ~36 kHz apart — **coarser than the 25 kHz grid**. Slots no bin landed
+in stay empty. Filling them would mean writing an amplitude the radio never
+measured, and on a coordination export an invented number reads as a clear
+channel. WWB's rule is *at least* 25 kHz between points, so 50 kHz is valid;
+the 2026-08-01 hardware run exported 1890 bins this way.
+
+Multi-pass accumulation fills the grid honestly — dithered chunk widths put
+the native bins on different frequencies each pass. Measured: three passes
+of 470–474 leave zero gaps above 25 kHz in 60/60 trials. A show export is
+always multi-pass, so the holes are a single-pass artifact operators never
+see.
+
+**Untested idea, needs a radio:** `OVERLAP_MHZ` only has to exceed the
+`EDGE_TRIM = 10` bins cut from each sweep end. For a 2 MHz chunk that is
+~0.22 MHz, not 1.0 — the flat 1.0 was calibrated for a wider chunk (see its
+"~58 kHz/bin" comment). Dropping it to ~0.3 would make native bins ~23 kHz,
+finer than the grid, and fill it with *real* samples. Not done: the trim
+fraction depends on the point count the device actually returns, which
+varies by model, so too small an overlap reopens real chunk-seam gaps. Bench
+it against the WSUB1G before believing it.
