@@ -8,3 +8,6 @@ dist/
 .pytest_cache/
 diagnostic_logs/
 .DS_Store
+
+# macOS/iCloud duplicate artifacts ("file 2.py")
+* [0-9].*
