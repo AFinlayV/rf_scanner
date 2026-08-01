@@ -179,6 +179,7 @@ def scan_worker(ranges, chunk, iterations):
     """Mirrors the Tk app's scan loop, but publishes to the SSE bus."""
     msg_q = S.msg_q
     pass_num = 0
+    empty_passes = 0
     start_env, end_env = ranges[0][0], ranges[-1][1]
     drain = drain_messages
 
@@ -193,12 +194,49 @@ def scan_worker(ranges, chunk, iterations):
             )
             drain()
             if data:
+                empty_passes = 0
                 with S.lock:
                     S.accumulator.add_pass(data)
                     S.spectrum_dirty = True
                     S.progress = 100
                     S.status = (f"Pass {pass_num} complete · "
                                 f"{S.accumulator.bin_count} bins")
+            else:
+                # A pass that returns nothing means every chunk timed out —
+                # the radio stopped answering, which happens after a scan
+                # is stopped mid-chunk and then left idle. Recover the way
+                # that actually works (reconnect, not flush) and retry once,
+                # rather than showing an empty graph and a cheerful status.
+                empty_passes += 1
+                S.write_log(f"Pass {pass_num} returned NO DATA — every chunk "
+                            f"timed out.")
+                if empty_passes == 1 and not S.stop_event.is_set():
+                    with S.lock:
+                        S.status = "No data — reopening the port and retrying…"
+                    push_state()
+                    S.write_log("Reopening the port (the only reliable "
+                                "recovery) and retrying…")
+                    try:
+                        ok, msg = S.scanner.reconnect()
+                    except Exception as exc:                # noqa: BLE001
+                        ok, msg = False, str(exc)
+                    first_line = (msg or "").splitlines()[0] if msg else ""
+                    S.write_log(f"Reconnect {'succeeded' if ok else 'FAILED'}"
+                                f"{' — ' + first_line if first_line else ''}")
+                    with S.lock:
+                        S.connected = bool(ok)
+                    if not ok:
+                        with S.lock:
+                            S.status = ("Radio not answering and reconnect "
+                                        "failed — check USB and power.")
+                        S.stop_event.set()
+                else:
+                    S.write_log("Still no data after a reconnect — stopping.")
+                    with S.lock:
+                        S.status = ("No data even after reconnecting. Check "
+                                    "the USB cable, and the device's "
+                                    "Config > USB Baud = 500K.")
+                    S.stop_event.set()
             push_state()
     except Exception as exc:                       # noqa: BLE001 - surface it
         S.write_log(f"Scan error: {exc}")

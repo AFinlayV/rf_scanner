@@ -69,6 +69,37 @@ ULX-D `H50`), so `family` is part of every band's identity. A band is a
 that list; chunks never straddle a span boundary and overlap padding never
 spills past one.
 
+## Open: the radio stops answering after an interrupted scan
+
+**Reproduced 2026-08-01, cause not fully understood, fix UNTESTED.**
+
+Symptom: stop a scan mid-chunk, leave it idle a few minutes, start another
+— every chunk times out, the pass returns zero data, and the UI shows an
+empty graph. Looks like a broken display; it is a radio that has stopped
+answering.
+
+What is actually known:
+- Reconnecting (`ClosePort` + `ConnectPort` + handshake) revives it every
+  time, immediately.
+- **Flushing the serial buffer does not fix it.** Measured: after four idle
+  minutes only **53 stale bytes** were waiting — nowhere near an overflow —
+  and every chunk still timed out. The "buffer fills up" theory is wrong.
+  `reset_stream()` is kept as cheap hygiene and as the diagnostic that
+  produced that number, not as a fix.
+- Short gaps between stop and restart do NOT trigger it. Idle time is a
+  necessary ingredient; the threshold is unmeasured (seen at ~4 and ~11
+  minutes, not seen at seconds).
+- Untested: whether a *clean* pass boundary (rather than a mid-chunk stop)
+  also poisons it, and whether the Tk app shows the same behaviour. It
+  shares the engine, so it probably does.
+
+Current mitigation, **written but never run**: on a pass that returns no
+data, `scan_worker` calls `RFExplorerScanner.reconnect()` and retries once,
+then gives up with an actionable status. Nobody has watched this fire.
+**Verify it before trusting it at a show** — reproduce with the recipe
+above and confirm the log shows "Reopening the port… Reconnect succeeded"
+followed by real data.
+
 ## Known state
 
 - Two tests fail and have since the baseline commit: output bins land 50 kHz

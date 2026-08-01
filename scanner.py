@@ -166,6 +166,53 @@ class RFExplorerScanner:
         except Exception as exc:
             return False, str(exc)
 
+    def reset_stream(self) -> int:
+        """Discard buffered serial bytes and parsed sweeps. Returns the
+        number of stale bytes dropped (-1 if the port couldn't be read).
+
+        Stopping a scan leaves the radio sweeping and streaming, and once
+        nothing is reading the port the OS buffer fills and starts dropping
+        bytes. The library's parser never re-syncs from a truncated
+        message, so every chunk of the *next* scan times out and returns
+        zero data — the failure looks like a dead display rather than a
+        desynced link. Short gaps between scans are harmless; a few idle
+        minutes are not. Flushing at scan start makes stop/start safe,
+        which matters because stop/start is what you do all night.
+        """
+        rfe = self._rfe
+        if rfe is None:
+            return -1
+        dropped = -1
+        try:
+            with rfe.m_hSerialPortLock:
+                dropped = rfe.m_objSerialPort.in_waiting
+                rfe.m_objSerialPort.reset_input_buffer()
+        except Exception:                                   # noqa: BLE001
+            pass
+        try:
+            rfe.SweepData.CleanAll()
+        except Exception:                                   # noqa: BLE001
+            pass
+        return dropped
+
+    def reconnect(self) -> tuple[bool, str]:
+        """Close and reopen the port, redoing the full device handshake.
+
+        Empirically the only thing that revives a radio which has stopped
+        answering after an interrupted scan (2026-08-01, measured): merely
+        flushing the serial buffer does not — after four idle minutes only
+        53 stale bytes were waiting, and every chunk still timed out. What
+        works is `connect()`'s handshake, which builds a fresh communicator
+        and re-requests the device config. So recovery is a reconnect, not
+        a flush.
+        """
+        try:
+            self.disconnect()
+        except Exception:                                   # noqa: BLE001
+            pass
+        time.sleep(0.5)
+        return self.connect()
+
     def disconnect(self):
         if self._rfe:
             try:
@@ -205,6 +252,13 @@ class RFExplorerScanner:
 
         # Enable on-device average calculator (only log on first pass)
         if pass_number == 1:
+            # Clear anything a previously-interrupted scan left mid-message,
+            # or every chunk below times out. See reset_stream().
+            stale = self.reset_stream()
+            if stale > 0:
+                msg_q.put({'type': 'log', 'text':
+                           f"Flushed {stale} stale bytes from the serial "
+                           f"buffer before starting."})
             try:
                 # eCalculator.AVG = 2; send raw command "C+" + mode byte
                 rfe.SendCommand("C+" + chr(RFE_Common.eCalculator.AVG.value))
