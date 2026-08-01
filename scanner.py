@@ -187,9 +187,15 @@ class RFExplorerScanner:
         msg_q: queue.Queue,
         pass_number: int = 1,
         smooth_window: int = 3,
+        ranges: list[tuple[float, float]] | None = None,
     ) -> list[tuple[float, float]]:
         """
-        One full pass: sweep start→end in chunk_mhz-wide slices.
+        One full pass: sweep the requested spectrum in chunk_mhz-wide slices.
+
+        `ranges` is a list of (start, end) MHz spans — pass several to scan
+        disjoint spectrum in one pass (band multiselect, or a single band
+        that the 600 MHz repack split in two). It supersedes start_mhz/
+        end_mhz, which remain for callers scanning one contiguous span.
 
         For each slice the device runs `iterations` averaged sweeps.
         Returns a sorted list of (freq_mhz, amp_dbm) at >= 25 kHz resolution.
@@ -207,43 +213,55 @@ class RFExplorerScanner:
                 msg_q.put({'type': 'log',
                            'text': "Note: could not set Average mode (firmware may not support it)."})
 
+        # ── Normalise to a list of spans ───────────────────────────
+        # One contiguous span is just a list of length 1, so everything
+        # below has a single code path.
+        spans_in = list(ranges) if ranges else [(start_mhz, end_mhz)]
+
         # ── Snap to 25 kHz grid ────────────────────────────────────
         STEP = WWB_MIN_STEP_MHZ
-        start_aligned = round(math.floor(start_mhz / STEP) * STEP, 3)
-        end_aligned   = round(math.ceil (end_mhz   / STEP) * STEP, 3)
         chunk_aligned = round(max(STEP, round(chunk_mhz / STEP) * STEP), 3)
+        spans = [(round(math.floor(a / STEP) * STEP, 3),
+                  round(math.ceil(b / STEP) * STEP, 3)) for a, b in spans_in]
 
-        if pass_number == 1 and (start_aligned, end_aligned, chunk_aligned) != (start_mhz, end_mhz, chunk_mhz):
+        if pass_number == 1 and (spans, chunk_aligned) != (
+                [tuple(s) for s in spans_in], chunk_mhz):
+            was = ", ".join(f"{a:g}–{b:g}" for a, b in spans_in)
+            now = ", ".join(f"{a:g}–{b:g}" for a, b in spans)
             msg_q.put({'type': 'log', 'text': (
-                f"Snapped to 25 kHz grid: {start_aligned}–{end_aligned} MHz, "
-                f"chunk {chunk_aligned} MHz  "
-                f"(was {start_mhz}–{end_mhz}, chunk {chunk_mhz})"
+                f"Snapped to 25 kHz grid: {now} MHz, chunk {chunk_aligned} MHz  "
+                f"(was {was}, chunk {chunk_mhz})"
             )})
-        start_mhz = start_aligned
-        end_mhz   = end_aligned
         chunk_mhz = chunk_aligned
+        start_mhz, end_mhz = spans[0][0], spans[-1][1]
 
         # Build chunk list with dithered boundaries.
         # Randomising chunk width ±15% each pass means IF filter rolloff
         # artifacts land at different frequencies, so they average out
         # across passes (spatial dithering for RF).
+        # Chunks never straddle a span boundary — a gap between spans is
+        # spectrum we were told not to scan, not spectrum to sweep through.
         DITHER = 0.15  # ±15% chunk width variation
-        chunks: list[tuple[float, float]] = []
-        f = start_mhz
-        while f < end_mhz - STEP / 2:
-            # Dither chunk width (skip on pass 1 so time estimate is accurate)
-            if pass_number > 1:
-                jitter = chunk_mhz * random.uniform(-DITHER, DITHER)
-                c_width = round(max(STEP * 4, chunk_mhz + jitter), 3)
-            else:
-                c_width = chunk_mhz
-            c_end = round(min(f + c_width, end_mhz), 3)
-            chunks.append((round(f, 3), c_end))
-            f = c_end
+        # Each chunk carries its span's hard edges: overlap padding may
+        # never spill past them into spectrum we were told to skip.
+        chunks: list[tuple[float, float, float, float]] = []
+        for span_start, span_end in spans:
+            f = span_start
+            while f < span_end - STEP / 2:
+                # Dither chunk width (skip on pass 1 so estimate is accurate)
+                if pass_number > 1:
+                    jitter = chunk_mhz * random.uniform(-DITHER, DITHER)
+                    c_width = round(max(STEP * 4, chunk_mhz + jitter), 3)
+                else:
+                    c_width = chunk_mhz
+                c_end = round(min(f + c_width, span_end), 3)
+                chunks.append((round(f, 3), c_end, span_start, span_end))
+                f = c_end
         total = len(chunks)
 
+        span_text = ", ".join(f"{a:.3f}–{b:.3f}" for a, b in spans)
         msg_q.put({'type': 'log', 'text': (
-            f"Pass {pass_number}: {start_mhz:.3f}–{end_mhz:.3f} MHz | "
+            f"Pass {pass_number}: {span_text} MHz | "
             f"{total} chunks × ~{chunk_mhz} MHz | {iterations} iter/chunk"
             f"{' (dithered)' if pass_number > 1 else ''}"
         )})
@@ -257,7 +275,7 @@ class RFExplorerScanner:
         # OVERLAP must exceed that or gaps appear at chunk boundaries.
         OVERLAP_MHZ = 1.0
 
-        for idx, (c_start, c_end) in enumerate(chunks):
+        for idx, (c_start, c_end, span_lo, span_hi) in enumerate(chunks):
             if stop_event.is_set():
                 msg_q.put({'type': 'log', 'text': f"Pass {pass_number} interrupted at chunk {idx+1}/{total}."})
                 break
@@ -269,9 +287,10 @@ class RFExplorerScanner:
                 'text': f"Pass {pass_number} | Chunk {idx+1}/{total}: {c_start:.1f}–{c_end:.1f} MHz",
             })
 
-            # Pad chunk edges (clamped to overall scan range)
-            padded_start = round(max(start_mhz, c_start - OVERLAP_MHZ), 3)
-            padded_end   = round(min(end_mhz,   c_end   + OVERLAP_MHZ), 3)
+            # Pad chunk edges, clamped to this chunk's own span — a span
+            # boundary is a hard edge, not a chunk seam to blend across.
+            padded_start = round(max(span_lo, c_start - OVERLAP_MHZ), 3)
+            padded_end   = round(min(span_hi, c_end   + OVERLAP_MHZ), 3)
 
             chunk_points = self._scan_chunk(
                 rfe, padded_start, padded_end, iterations, stop_event, msg_q

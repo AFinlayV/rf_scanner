@@ -15,7 +15,9 @@ import math
 import os
 import datetime
 
-from constants import APP_TITLE, APP_VERSION, BAUD_RATE, FREQ_PRESETS, WWB_MIN_STEP_MHZ
+from constants import APP_TITLE, APP_VERSION, BAUD_RATE, WWB_MIN_STEP_MHZ
+import bands as bandlib
+from bands import FREQ_PRESETS
 from scanner import RFExplorerScanner, MISSING_DEPS, list_serial_ports
 from stats import ScanAccumulator
 from export import save_wwb_csv, default_filename
@@ -58,6 +60,10 @@ class RFScannerApp:
         self._accumulator = ScanAccumulator()
         self._scan_start_time: float | None = None
         self._scanning = False
+        # Band multiselect: labels from bands.BY_LABEL. Empty = scan the
+        # plain start/end range instead.
+        self._selected_bands: list[str] = []
+        self._suppress_band_clear = False
 
         self._build_ui()
         self._refresh_ports()
@@ -102,9 +108,19 @@ class RFScannerApp:
         preset_cb = ttk.Combobox(pf, textvariable=self._preset_var,
                                   values=list(FREQ_PRESETS.keys()),
                                   width=22, state="readonly")
-        preset_cb.grid(row=0, column=1, columnspan=3, sticky="ew", pady=3,
+        preset_cb.grid(row=0, column=1, columnspan=2, sticky="ew", pady=3,
                        padx=(4, 0))
         preset_cb.bind("<<ComboboxSelected>>", self._on_preset)
+
+        ttk.Button(pf, text="Bands…", command=self._open_band_picker
+                   ).grid(row=0, column=3, sticky="ew", pady=3, padx=(6, 0))
+
+        # Summary of the current band multiselect (blank when scanning a
+        # plain start/end range).
+        self._bandsel_var = tk.StringVar(value="")
+        ttk.Label(pf, textvariable=self._bandsel_var, foreground="#58a6ff",
+                  wraplength=330, justify="left"
+                  ).grid(row=3, column=0, columnspan=4, sticky="w", pady=(2, 0))
 
         ttk.Label(pf, text="Start (MHz):").grid(row=1, column=0, sticky="w", pady=3)
         self._start_var = tk.StringVar(value="470")
@@ -128,10 +144,15 @@ class RFScannerApp:
 
         self._est_var = tk.StringVar()
         ttk.Label(pf, textvariable=self._est_var, foreground="gray"
-                  ).grid(row=3, column=0, columnspan=4, sticky="w", pady=(4, 0))
+                  ).grid(row=4, column=0, columnspan=4, sticky="w", pady=(4, 0))
 
         for v in (self._start_var, self._end_var, self._chunk_var, self._iter_var):
             v.trace_add("write", lambda *_: self._update_estimate())
+        # Hand-editing Start/End means the operator wants that literal range,
+        # so it drops any band multiselect (last edit wins). The picker sets
+        # these itself, hence the guard.
+        for v in (self._start_var, self._end_var):
+            v.trace_add("write", lambda *_: self._on_range_typed())
         self._update_estimate()
 
         # ── Controls ────────────────────────────────────
@@ -425,21 +446,153 @@ class RFScannerApp:
     def _on_preset(self, _event=None):
         val = FREQ_PRESETS.get(self._preset_var.get())
         if val:
+            # A preset is a plain contiguous range — it replaces any band
+            # multiselect rather than combining with it.
+            self._clear_bands()
             self._start_var.set(str(val[0]))
             self._end_var.set(str(val[1]))
+
+    # ── Band multiselect ─────────────────────────────────
+
+    def _clear_bands(self):
+        self._selected_bands = []
+        self._bandsel_var.set("")
+
+    def _on_range_typed(self):
+        if self._selected_bands and not self._suppress_band_clear:
+            self._clear_bands()
+
+    def _current_ranges(self) -> list[tuple[float, float]]:
+        """The spectrum to scan: selected bands, else the start/end range."""
+        if self._selected_bands:
+            return bandlib.ranges_for(self._selected_bands)
+        try:
+            return [(float(self._start_var.get()), float(self._end_var.get()))]
+        except (ValueError, tk.TclError):
+            return []
+
+    def _open_band_picker(self):
+        """Checklist of manufacturer bands; selection becomes the scan set."""
+        win = tk.Toplevel(self.root)
+        win.title("Select Bands")
+        win.transient(self.root)
+        win.columnconfigure(0, weight=1)
+        win.rowconfigure(1, weight=1)
+
+        us_only = tk.BooleanVar(value=True)
+        summary = tk.StringVar()
+
+        top = ttk.Frame(win, padding=(10, 8, 10, 0))
+        top.grid(row=0, column=0, sticky="ew")
+        ttk.Checkbutton(top, text="US-usable only (post-600 MHz repack)",
+                        variable=us_only,
+                        command=lambda: rebuild()).pack(anchor="w")
+
+        # Scrollable checklist.
+        mid = ttk.Frame(win, padding=(10, 6))
+        mid.grid(row=1, column=0, sticky="nsew")
+        mid.columnconfigure(0, weight=1)
+        mid.rowconfigure(0, weight=1)
+        canvas = tk.Canvas(mid, height=340, highlightthickness=0, width=430)
+        scroll = ttk.Scrollbar(mid, orient="vertical", command=canvas.yview)
+        inner = ttk.Frame(canvas)
+        inner.bind("<Configure>",
+                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.configure(yscrollcommand=scroll.set)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scroll.grid(row=0, column=1, sticky="ns")
+
+        vars_by_label: dict[str, tk.BooleanVar] = {}
+
+        def update_summary():
+            picked = [lab for lab, v in vars_by_label.items() if v.get()]
+            if not picked:
+                summary.set("Nothing selected — scan uses the Start/End range.")
+                return
+            spans = bandlib.ranges_for(picked)
+            width = bandlib.total_width(spans)
+            span_txt = ", ".join(f"{a:g}–{b:g}" for a, b in spans)
+            overlap = sum(bandlib.total_width(list(bandlib.BY_LABEL[p].ranges))
+                          for p in picked) - width
+            note = f"  (overlap merged: {overlap:g} MHz saved)" if overlap > 0.01 else ""
+            summary.set(f"{len(picked)} band(s) → {span_txt} MHz  "
+                        f"= {width:g} MHz total{note}")
+
+        def rebuild():
+            for child in inner.winfo_children():
+                child.destroy()
+            vars_by_label.clear()
+            shown = bandlib.us_bands() if us_only.get() else bandlib.BANDS
+            last_group = None
+            for band in shown:
+                group = f"{band.maker} — {band.family}"
+                if group != last_group:
+                    ttk.Label(inner, text=group, foreground="#8b949e"
+                              ).pack(anchor="w", pady=(8, 2))
+                    last_group = group
+                var = tk.BooleanVar(value=band.label in self._selected_bands)
+                vars_by_label[band.label] = var
+                text = f"{band.name:5} {band.span_text}"
+                if band.us_legal == "partial":
+                    text += "   ⚠ partly outside US spectrum"
+                elif band.us_legal == "none":
+                    text += "   ⚠ not usable in the US"
+                if band.note:
+                    text += f"\n      {band.note}"
+                ttk.Checkbutton(inner, text=text, variable=var,
+                                command=update_summary).pack(anchor="w")
+            update_summary()
+
+        rebuild()
+
+        bottom = ttk.Frame(win, padding=(10, 0, 10, 10))
+        bottom.grid(row=2, column=0, sticky="ew")
+        ttk.Label(bottom, textvariable=summary, foreground="#58a6ff",
+                  wraplength=420, justify="left").pack(anchor="w", pady=(0, 8))
+
+        def apply_and_close():
+            picked = [lab for lab, v in vars_by_label.items() if v.get()]
+            self._selected_bands = picked
+            if picked:
+                spans = bandlib.ranges_for(picked)
+                # Start/End mirror the overall envelope so the export
+                # filename and plot limits stay meaningful.
+                self._suppress_band_clear = True
+                self._start_var.set(str(spans[0][0]))
+                self._end_var.set(str(spans[-1][1]))
+                self._suppress_band_clear = False
+                names = ", ".join(bandlib.BY_LABEL[p].name for p in picked)
+                span_txt = ", ".join(f"{a:g}–{b:g}" for a, b in spans)
+                self._bandsel_var.set(
+                    f"Bands: {names}  →  {span_txt} MHz "
+                    f"({bandlib.total_width(spans):g} MHz)")
+                self._preset_var.set("Custom")
+            else:
+                self._clear_bands()
+            self._update_estimate()
+            win.destroy()
+
+        ttk.Button(bottom, text="Scan these bands", command=apply_and_close
+                   ).pack(side="right")
+        ttk.Button(bottom, text="Clear",
+                   command=lambda: [v.set(False) for v in vars_by_label.values()]
+                   or update_summary()).pack(side="right", padx=(0, 6))
+
+        win.geometry("470x520")
 
     # ── Estimate label ───────────────────────────────────
 
     def _update_estimate(self):
         try:
-            start = float(self._start_var.get())
-            end   = float(self._end_var.get())
             chunk = float(self._chunk_var.get())
             iters = int(self._iter_var.get())
-            if chunk <= 0 or start >= end:
+            spans = [(a, b) for a, b in self._current_ranges() if b > a]
+            if chunk <= 0 or not spans:
                 self._est_var.set("")
                 return
-            n_chunks = math.ceil((end - start) / chunk)
+            # Chunks never straddle a span boundary, so count per span.
+            n_chunks = sum(math.ceil((b - a) / chunk) for a, b in spans)
             # ~0.1s LO settle + ~0.5s flush (2 sweeps) + ~0.3s per iteration
             secs = n_chunks * (0.6 + iters * 0.3)
             t = f"~{secs:.0f}s" if secs < 60 else f"~{secs/60:.1f}min"
@@ -546,6 +699,14 @@ class RFScannerApp:
                                  "Chunk size must be greater than 0.")
             return
 
+        # Selected bands (possibly disjoint) win over the plain start/end
+        # range; with none selected this is just [(start, end)].
+        scan_ranges = self._current_ranges()
+        if self._selected_bands:
+            names = ", ".join(bandlib.BY_LABEL[b].name
+                              for b in self._selected_bands)
+            self._write_log(f"Scanning bands: {names}")
+
         self._accumulator.clear()
         self._stop_event.clear()
         self._scan_start_time = time.time()
@@ -568,7 +729,8 @@ class RFScannerApp:
                     self._queue.put({'type': 'pass_started', 'pass_number': pass_num})
                     data = self._scanner.scan_pass(
                         start, end, chunk, iters,
-                        self._stop_event, self._queue, pass_num
+                        self._stop_event, self._queue, pass_num,
+                        ranges=scan_ranges,
                     )
                     if data:
                         self._queue.put({

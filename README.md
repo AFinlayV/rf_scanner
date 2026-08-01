@@ -11,6 +11,8 @@ Scans the UHF/sub-GHz band in narrow chunks for maximum sensitivity, accumulates
 - **Live spectrum plot** — embedded matplotlib visualization with real-time chunk updates, max hold overlay, and previous pass comparison
 - **Chunk boundary dithering** — randomizes chunk edges on passes 2+ so IF filter artifacts average out across passes (spatial dithering for RF)
 - **3-point smoothing** — moving average in linear power domain reduces noise spikiness without smearing real signals
+- **Manufacturer band multiselect** — pick Shure/Sennheiser bands by name (G57, H5, J8, A1, G…) and scan exactly that spectrum; overlapping bands merge so nothing is swept twice
+- **Disjoint scanning** — scans a list of spans, not one range. Post-repack bands really are discontiguous (Shure J8 = 554–608 **+** 614–616 MHz), and the 608–614 carrier gap is never swept
 - **25 kHz grid alignment** — all output snapped to wireless mic channel spacing
 - **Live Mode** — separate real-time spectrum + waterfall display for monitoring
 - **WWB/Soundbase CSV export** — headerless two-column format (freq MHz, amp dBm)
@@ -41,7 +43,10 @@ python3 rf_scanner.py
 
 1. Select the RF Explorer port (`/dev/cu.usbserial-XXXX` or `/dev/cu.SLAB_USBtoUART`)
 2. Click **Connect**
-3. Set frequency range, chunk size, and iterations per chunk
+3. Set the spectrum to scan — either type a Start/End range, pick a preset, or
+   click **Bands…** to check off manufacturer bands (defaults to showing only
+   bands still usable in the US after the 600 MHz repack). Whichever you touch
+   last wins. Then set chunk size and iterations per chunk
 4. Click **Start Scan** — runs continuously until you hit **Stop**
 5. Adjust export percentile and click **Save CSV**
 
