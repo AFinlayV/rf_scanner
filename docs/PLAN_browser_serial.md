@@ -59,6 +59,7 @@ with the radio attached.
   set a small range, read one `$S`, print points. **Proves the whole risk.**
   Verify: printed frequencies and amplitudes match what `webapp.py` reports
   for the same range.
+  **Done and hardware-verified 2026-08-01** — the only phase that has been.
 - **P1 — the sweep engine.** Port `scanner.py`'s chunk loop: per-chunk
   config, LO settle, flush phase, collect N sweeps, edge trim, overlap
   padding, 25 kHz grid snap, dithering on passes 2+. This is the RF

@@ -187,3 +187,9 @@ What is known about the cause:
   `scanner.py`, both test files, and this file, so it will conflict with the
   browser-era edits here. Read its commit message first — the analysis is
   the valuable part, whatever is decided about the diff.
+
+  It is already checked out as a worktree at
+  `.claude/worktrees/vibrant-solomon-ba6505/`, so it can be read and its
+  tests run without touching `main`. That copy predates the browser work, so
+  its `README.md` and `AGENTS.md` are the older versions — don't read them
+  as current.
