@@ -11,7 +11,8 @@ after the web UI has run a real show).
 ```
 scanner.py stats.py export.py bands.py constants.py   the engine — no UI imports
 ui.py live_mode.py rf_scanner.py                      Tk desktop frontend
-webapp.py web/                                        browser frontend
+webapp.py web/                                        server-side web frontend
+browser/                                              the engine again, in JS
 tests/                                                48 passing, engine-level
 ```
 
@@ -28,6 +29,15 @@ why the web UI exists.
 
 **Both work. Do not delete `ui.py` until the web UI has survived a real
 gig** — the desktop app is the fallback if something fails at a show.
+
+A **third** frontend is being built in `browser/`: the page opens the radio
+itself over Web Serial, so the engine runs in JavaScript and the server holds
+no state. It is not finished and not gig-ready — the engine and band table
+are ported and parity-checked against the Python, but there is no UI yet and
+nothing there has been driven against the hardware. **Read
+`docs/PLAN_browser_serial.md` before touching `browser/`**; it records the
+wire protocol, the phase gates, and what is verified versus merely written.
+Nothing in `browser/` may change the Python engine's behaviour.
 
 **v1 acceptance (2026-08-01): done when Alex can run a band-multiselect scan
 and get a WWB CSV from a browser — including a phone — without touching the
