@@ -28,7 +28,27 @@ export class RFExplorer {
   // ── connection ───────────────────────────────────────────────────────
 
   async connect() {
-    this.port = await navigator.serial.requestPort();
+    this.port = await navigator.serial.requestPort();   // native picker
+    return this._open();
+  }
+
+  /** Close and reopen the SAME already-granted port, redoing the handshake.
+   *
+   * This is scanner.py's reconnect(), which is the only thing that reliably
+   * revives a radio that has stopped answering after an interrupted scan —
+   * flushing the buffer does not (see AGENTS.md). requestPort() would need a
+   * fresh user gesture, but reopening a port the browser has already granted
+   * does not, so recovery stays unattended here as well.
+   */
+  async reconnect() {
+    const granted = this.port;                  // disconnect() nulls this
+    try { await this.disconnect(); } catch {}
+    this.port = granted;
+    await new Promise(r => setTimeout(r, 500)); // same settle as scanner.py
+    return this._open();
+  }
+
+  async _open() {
     await this.port.open({ baudRate: BAUD });
     this.writer = this.port.writable.getWriter();
     this._closing = false;

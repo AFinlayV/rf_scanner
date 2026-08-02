@@ -1,0 +1,114 @@
+/* style.css — RF Scanner web UI. Dark, dense, readable at a gig. */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f1116;
+  --panel: #171a21;
+  --edge: #262b35;
+  --text: #e6e8eb;
+  --dim: #8b949e;
+  --accent: #e8a33d;
+  --ok: #4fa96a;
+  --danger: #d16060;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.45 -apple-system, "SF Pro Text", system-ui, sans-serif;
+  padding: 1rem;
+  max-width: 1280px;
+  margin: 0 auto;
+  -webkit-text-size-adjust: 100%;
+}
+
+header {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;
+}
+h1 { font-size: 1.15rem; font-weight: 600; }
+h1 small { color: var(--dim); font-weight: 400; font-size: 0.75rem; }
+h2 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.07em;
+     color: var(--dim); font-weight: 600; margin-bottom: 0.6rem; }
+h3 { font-size: 0.75rem; color: var(--dim); font-weight: 600;
+     margin: 0.9rem 0 0.3rem; }
+
+.conn { display: flex; align-items: center; gap: 0.45rem; color: var(--dim);
+        font-size: 0.85rem; }
+#live-dot { color: var(--dim); font-size: 0.7rem; }
+#live-dot.ok { color: var(--ok); }
+#live-dot.down { color: var(--danger); }
+
+main { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.9rem; }
+.panel { background: var(--panel); border: 1px solid var(--edge);
+         border-radius: 10px; padding: 0.9rem; }
+.panel.wide { grid-column: 1 / -1; }
+@media (max-width: 860px) {
+  main { grid-template-columns: 1fr; }
+  body { padding: 0.6rem; }
+}
+
+.row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.row.spread { justify-content: space-between; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;
+         margin-top: 0.6rem; }
+label { display: flex; flex-direction: column; gap: 0.2rem;
+        font-size: 0.72rem; color: var(--dim); }
+label.inline { flex-direction: row; align-items: center; gap: 0.4rem;
+               font-size: 0.85rem; color: var(--text); margin: 0.5rem 0; }
+
+input, select, button {
+  font: inherit; color: var(--text); background: #1e222b;
+  border: 1px solid var(--edge); border-radius: 7px;
+  padding: 0.5rem 0.6rem; min-height: 40px;   /* comfortable on a phone */
+}
+input:focus, select:focus { outline: 2px solid var(--accent); border-color: transparent; }
+select { flex: 1; min-width: 120px; }
+button { cursor: pointer; background: var(--accent); border-color: var(--accent);
+         color: #201603; font-weight: 600; padding: 0.5rem 0.9rem; }
+button:hover:not(:disabled) { filter: brightness(1.1); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.ghost { background: #1e222b; color: var(--text);
+               border-color: var(--edge); font-weight: 500; }
+button.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+
+.hint { color: var(--dim); font-size: 0.78rem; margin-top: 0.5rem;
+        line-height: 1.4; }
+.summary { color: #58a6ff; font-size: 0.8rem; margin: 0.6rem 0;
+           line-height: 1.4; }
+
+.progress { height: 6px; background: #1e222b; border-radius: 3px;
+            overflow: hidden; margin-top: 0.7rem; }
+#progress-bar { height: 100%; width: 0; background: var(--accent);
+                transition: width 0.25s ease; }
+
+canvas { width: 100%; height: 420px; display: block; margin-top: 0.5rem;
+         background: #0c0e12; border-radius: 8px; border: 1px solid var(--edge); }
+
+pre#log {
+  font: 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--dim); background: #0c0e12; border: 1px solid var(--edge);
+  border-radius: 8px; padding: 0.6rem; height: 180px; overflow-y: auto;
+  white-space: pre-wrap; word-break: break-word;
+}
+
+/* [hidden] must beat any display rule below, or hidden elements show. */
+[hidden] { display: none !important; }
+
+/* Band picker */
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+         display: grid; place-items: center; padding: 1rem; z-index: 50; }
+.modal-box { background: var(--panel); border: 1px solid var(--edge);
+             border-radius: 12px; padding: 1rem; width: min(560px, 100%);
+             max-height: 85vh; display: flex; flex-direction: column; }
+#band-list { overflow-y: auto; flex: 1; margin: 0.4rem 0;
+             -webkit-overflow-scrolling: touch; }
+label.band { flex-direction: row; align-items: flex-start; gap: 0.55rem;
+             padding: 0.4rem 0.2rem; font-size: 0.85rem; color: var(--text);
+             border-bottom: 1px solid rgba(255,255,255,0.04); cursor: pointer; }
+label.band input { min-height: 0; margin-top: 0.2rem; }
+label.band b { font-family: ui-monospace, Menlo, monospace; margin-right: 0.4rem; }
+label.band em { color: var(--accent); font-style: normal; font-size: 0.78rem; }
+label.band small { color: var(--dim); }
+
