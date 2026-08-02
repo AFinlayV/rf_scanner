@@ -128,3 +128,19 @@ What is known about the cause:
 - Two tests fail and have since the baseline commit: output bins land 50 kHz
   apart where the tests want 25 kHz (grid-snapping artifact). Exports remain
   WWB-valid — WWB needs *at least* 25 kHz. Unresolved on purpose.
+
+  **There is an unmerged branch that resolves this** —
+  `claude/vibrant-solomon-ba6505`, one commit, written 2026-08-01 16:05,
+  before the browser work started. It concludes the *tests* were wrong: the
+  gaps are not two native bins colliding in one grid slot but native bins
+  being coarser than the grid, because `OVERLAP_MHZ` pads every chunk 1 MHz
+  per side (a 2 MHz chunk is swept as 4 MHz over 112 points = 36 kHz/bin).
+  Filling those slots would mean interpolating amplitudes the radio never
+  measured, which on a coordination export reads as a clear channel. It
+  relaxes both assertions to `0.025 <= gap <= 0.050` and adds the lower
+  bound WWB actually requires, which nothing tested before.
+
+  **Decide whether to merge it before doing more test work.** It touches
+  `scanner.py`, both test files, and this file, so it will conflict with the
+  browser-era edits here. Read its commit message first — the analysis is
+  the valuable part, whatever is decided about the diff.
