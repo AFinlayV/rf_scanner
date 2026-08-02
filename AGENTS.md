@@ -6,6 +6,41 @@ not a single-serving build. Maintained, versioned, not frozen.
 after the web UI has run a real show).
 **Doctrine:** `_roadcase/DOCTRINE.md`.
 
+## Start here (written 2026-08-01, end of day)
+
+The browser build in `browser/` is written end to end — all four phases of
+`docs/PLAN_browser_serial.md`. **Two gates are open, and both need Alex and
+the radio, not more code.**
+
+**1. Hardware-verify the browser build.** Nothing in `browser/` has ever
+talked to the real RF Explorer; it has only been driven against a fake
+serial device. Do this before anything else, because a misdecoded protocol
+field and a DNS problem look identical once the thing is deployed.
+
+```bash
+cd browser && python3 -m http.server 8765
+```
+
+`http://localhost:8765/spike.html` → Connect → **Run one pass** over
+470–476 MHz, chunk 6, 5 iter. Compare against a **fresh** Python run over
+the same span — not the numbers written down anywhere, the RF environment
+drifts 4 dB in an hour. Then `index.html` for the real UI. Chrome or Edge;
+localhost is a secure context so Web Serial works without TLS.
+
+What would falsify the port: a config reply that fails to parse (the step
+field is 7 *or* 8 characters), bins landing on the wrong frequencies, or
+chunks timing out — the settle and timeout constants in `sweep.js` were
+copied from `scanner.py` and never tested against hardware that answers 40×
+slower than the fake.
+
+**2. Then the deploy.** Blocked on a DNS record Alex is creating:
+`rf.alexthe5th.com A -> 144.202.111.184`. Once it resolves, the steps are in
+`browser/deploy/nginx-rf.conf`'s header. `nginx -t` covers showrunner too —
+if it fails, do not reload.
+
+**Open decision, unrelated to the above:** whether to merge
+`claude/vibrant-solomon-ba6505`. See "Known state" at the bottom.
+
 ## Shape
 
 ```
@@ -17,9 +52,10 @@ tests/                                                48 passing, engine-level
 ```
 
 **The engine imports no tkinter and no matplotlib, and that must stay true.**
-It is what lets two frontends exist without duplicating logic. Anything that
-would put a widget import into `scanner.py`/`stats.py`/`export.py`/`bands.py`
-is wrong — push it into a frontend instead.
+It is what lets three frontends exist without duplicating logic. Anything
+that would put a widget import into
+`scanner.py`/`stats.py`/`export.py`/`bands.py` is wrong — push it into a
+frontend instead.
 
 ## Frontends
 

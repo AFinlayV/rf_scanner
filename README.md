@@ -165,6 +165,6 @@ left unresolved on purpose rather than papered over. See AGENTS.md.
 
 ## Known issues
 
-- **Amplitude offset (~10 dB)**: Device display may read ~10 dB higher than software output in quiet spectrum. Still unexplained, but one hypothesis is now ruled out: on 2026-08-01 the WSUB1G reported `OffsetDB=0` and `CfgOffset=0` at connect, so the RF Explorer library is *not* silently applying an offset to readings on this unit. Diagnostic logging remains in place at connect time.
+- **Amplitude offset (~10 dB)**: Device display may read ~10 dB higher than software output in quiet spectrum. Unexplained, and not for want of looking — the library-applies-a-hidden-offset theory was ruled out on 2026-03-24 and re-confirmed on 2026-08-01, both times with the device reporting `OffsetDB=0` and `CfgOffset=0` at connect. Diagnostic logging stays in place at connect time. Full investigation: `PROJECT_NOTES.md`.
 - **macOS port list**: `/dev/cu.debug-console` may appear in the port dropdown — this is a macOS system port, not the RF Explorer. Select the `usbserial` or `SLAB` port instead.
 - **Python 3.10 + macOS 15**: Color emoji and certain Unicode characters crash Tk. All UI text uses plain ASCII.

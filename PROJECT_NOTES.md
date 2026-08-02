@@ -1,5 +1,18 @@
 # RF Scanner — Project Notes
-> For the next Claude instance picking this up.
+
+> **This is a historical log, not the current state of the project.** It is
+> kept because the hardware findings, the design rationale and the band
+> reference below are still worth having — but sections are dated from
+> 2026-03 onward and were written when this was a Tk-only app.
+>
+> **Start with `AGENTS.md`** for what the project is now and what not to
+> build, then `docs/` for the design decisions behind anything in flight.
+> Where this file and those disagree, they win.
+>
+> Chiefly out of date here: this is no longer "a macOS desktop tool" — there
+> are three frontends (Tk, the Flask web UI, and the Web Serial browser
+> build), and the engine deliberately imports no tkinter and no matplotlib
+> so they can share it.
 
 ## What this project is
 
@@ -15,28 +28,24 @@ The user is a live sound engineer doing RF coordination (wireless mics, IEMs).
 
 ## Files
 
+*See the README for the current tree — this section listed only the Tk app
+and went stale as the other frontends landed. What matters structurally:*
+
 ```
-rf_scanner/
-├── rf_scanner.py       # entry point (thin — imports ui and launches)
-├── constants.py        # shared constants (app title, baud rate, freq presets)
-├── scanner.py          # RFExplorerScanner — serial comms + scan_pass()
-├── stats.py            # ScanAccumulator — multi-pass statistical aggregation
-├── export.py           # WWB CSV export with percentile selection
-├── ui.py               # RFScannerApp — main window + continuous scan UI
-├── live_mode.py        # LiveModeWindow — real-time spectrum + waterfall
-├── requirements.txt    # pyserial, RFExplorer, numpy, matplotlib
-├── run.command         # double-click launcher for macOS (auto pip-installs deps)
-└── tests/
-    ├── mock_rfexplorer.py   # mock hardware (simulates RF Explorer device)
-    ├── conftest.py          # pytest fixtures + module patching
-    ├── test_stats.py        # ScanAccumulator tests (16 tests)
-    ├── test_export.py       # WWB CSV export tests (8 tests)
-    ├── test_scanner.py      # scanner tests with mock hardware (15 tests)
-    └── test_integration.py  # full pipeline + multi-pass tests (7 tests, 4 edge cases)
+scanner.py stats.py export.py bands.py constants.py   engine (no UI imports)
+rf_scanner.py ui.py live_mode.py                      Tk frontend
+webapp.py web/                                        Flask web frontend
+browser/                                              Web Serial frontend (JS)
+tests/                                                50 tests
 ```
 
+`bands.py` owns every spectrum definition and took the frequency presets
+that this document elsewhere still attributes to `constants.py`.
+
 Run with:  `python3 rf_scanner.py`  or double-click `run.command`
-Tests:   `python3 -m pytest tests/ -v`  (50 tests, ~26s)
+Web UI:    `python3 webapp.py`  →  http://localhost:8080
+Tests:   `python3 -m pytest tests/ -v`  (50 tests, ~23s — 48 pass, 2 have
+failed since the first commit; see AGENTS.md "Known state")
 
 ---
 
@@ -220,6 +229,7 @@ Device display reads ~-98 to -100 dBm in quiet spectrum, but software outputs ~-
 - Diagnostic logging added at connect time reports: `InputStage`, `OffsetDB`, `CfgOffset`, `CalcMode`
 - First-chunk diagnostic logs raw min/max/sample values
 - **Observed values (2026-03-24)**: `InputStage=eInputStage.Direct | OffsetDB=0.0 | CfgOffset=0.0 | CalcMode=eCalculator.NORMAL` — all zero offsets, so the library isn't adding any offset. The discrepancy source remains unknown.
+- **Re-confirmed (2026-08-01)**, same WSUB1G on `/dev/cu.usbserial-210`, identical reading: `InputStage=eInputStage.Direct | OffsetDB=0 | CfgOffset=0 | CalcMode=eCalculator.NORMAL`. Five months apart, so this is a stable property of the unit and not a transient. **Stop re-measuring it** — the library offset is not the cause and a third reading will not say otherwise. If this is picked up again, the untested suspects are the antenna/front-end path and what the device's own display does to the number before showing it, neither of which is visible from the serial stream.
 
 **LNA investigation:**
 - Attempted sending `a2` (LNA enable) via serial — caused device timeouts, had to power cycle
