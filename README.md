@@ -133,7 +133,8 @@ rf_scanner/
 │   ├── stats.js        #   stats.py port
 │   ├── export.js       #   export.py port + client-side download
 │   ├── bands.js        #   bands.py transcription
-│   └── spike.html      #   protocol bench harness
+│   ├── spike.html      #   protocol bench harness
+│   └── deploy/         #   nginx site + rsync script for rf.alexthe5th.com
 │
 ├── AGENTS.md           # how this project is built and what not to build
 ├── docs/               # design decisions — read before the code they describe

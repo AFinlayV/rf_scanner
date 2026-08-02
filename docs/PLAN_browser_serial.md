@@ -75,6 +75,7 @@ with the radio attached.
   "P3 status".
 - **P4 — serve it.** Static files on the VPS + nginx + certbot. **HTTPS is
   mandatory** — Web Serial refuses to run outside a secure context.
+  **Written and staged; blocked on DNS** — see "P4 status".
 
 ## P1 status — parity proven on the bench, not yet on the radio
 
@@ -235,6 +236,56 @@ Deliberately absent, and needing a written decision before anyone adds them:
 Live Mode / waterfall (AGENTS.md forbids it in a browser UI without one) and
 any live per-chunk plotting — `scanPass` emits `chunk_vis` messages and
 nothing consumes them, matching what the proven web UI does.
+
+## P4 status — everything but the one step Alex owns
+
+`browser/deploy/nginx-rf.conf` and `browser/deploy/deploy.sh`. Both follow
+the box's existing house pattern rather than the roadcase template's, which
+deploys a Flask app behind a proxy: there is no unit, no venv and no port
+here, because the browser build is static files and the radio is on the
+viewer's machine.
+
+**Blocked on DNS.** `rf.alexthe5th.com` had no record at all on 2026-08-01
+(the apex is on Squarespace; `showrunner.alexthe5th.com` → 144.202.111.184).
+Alex is creating it. Certbot proves control of a name by being reached over
+it, so nothing else can proceed first. Once it resolves, the whole deploy is
+the four blocks in `nginx-rf.conf`'s header.
+
+Verified against the live box, read-only:
+
+- The house pattern is `certonly --webroot -w /var/www/acme`, confirmed in
+  `/etc/letsencrypt/renewal/showrunner.alexthe5th.com.conf` —
+  `authenticator = webroot`. So issuance and TLS installation are two
+  commands, not `certbot --nginx`, which would switch renewals to the nginx
+  authenticator and break the arrangement the ACME location depends on.
+- `listen 144.202.111.184:80` is deliberate: certbot preserves the address
+  when it rewrites that line into the 443 listen, which is what keeps the
+  eventual TLS block off the tailnet address that tailscaled owns.
+- nginx serves `.js` as `application/javascript`, which ES modules accept.
+  Worth checking because the entire app is modules — a wrong MIME type here
+  would fail the imports and take the whole page down.
+- **There is no passwordless sudo on this box.** `deploy.sh` uses `ssh -t`
+  so sudo can prompt, which also means it cannot be automated from a hook or
+  a cron job as written, and cannot be run by an agent.
+
+Two bugs the rsync found by being run, both fixed:
+
+- `.pytest_cache` was staged for publication. It is *gitignored*, so it
+  never appears in `git status` — but rsync sees it perfectly well. Any
+  deploy that mirrors a working tree publishes what git hides unless it is
+  told not to; the excludes now drop dotfiles.
+- Adding that exclude was not enough. rsync **protects** excluded paths on
+  the destination from `--delete`, so junk that ever reached the webroot
+  would have been pinned there permanently by the very rule meant to keep it
+  out. Needs `--delete-excluded`.
+
+Staged the real file set to a scratch path on the box to prove the transfer
+and the exclusions — 8 files, 92 KB — then removed it. **Nothing was
+deployed and nothing was enabled**: no webroot, no site symlink, no
+certificate, no DNS. The box is as it was found.
+
+Not verified, and not verifiable until DNS exists: `nginx -t`, the reload,
+issuance, `certbot renew --dry-run`, and the acceptance test itself.
 
 ## Acceptance
 
