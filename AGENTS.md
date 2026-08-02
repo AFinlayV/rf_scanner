@@ -30,14 +30,21 @@ why the web UI exists.
 **Both work. Do not delete `ui.py` until the web UI has survived a real
 gig** — the desktop app is the fallback if something fails at a show.
 
-A **third** frontend is being built in `browser/`: the page opens the radio
-itself over Web Serial, so the engine runs in JavaScript and the server holds
-no state. It is not finished and not gig-ready — the engine and band table
-are ported and parity-checked against the Python, but there is no UI yet and
-nothing there has been driven against the hardware. **Read
-`docs/PLAN_browser_serial.md` before touching `browser/`**; it records the
-wire protocol, the phase gates, and what is verified versus merely written.
-Nothing in `browser/` may change the Python engine's behaviour.
+A **third** frontend lives in `browser/`: the page opens the radio itself
+over Web Serial, so the engine runs in JavaScript and the server holds no
+state. It is feature-complete — engine, statistics, CSV export, band
+multiselect, plot, multi-pass loop and empty-pass auto-recovery — and the
+whole app has been driven end to end against a fake serial device that
+speaks the real wire protocol.
+
+**It is still not gig-ready, because none of it has ever talked to the
+actual radio.** A fake that implements the protocol correctly cannot catch a
+place where the protocol was decoded wrong, and answers in 25 ms where the
+radio takes ~1s per chunk, so every settle and timeout constant is untested
+in anger. **Read `docs/PLAN_browser_serial.md` before touching `browser/`**;
+it records the wire protocol, the phase gates, and what is verified versus
+merely written. Nothing in `browser/` may change the Python engine's
+behaviour.
 
 **v1 acceptance (2026-08-01): done when Alex can run a band-multiselect scan
 and get a WWB CSV from a browser — including a phone — without touching the

@@ -71,7 +71,8 @@ with the radio attached.
 - **P3 — the UI.** Reuse `web/templates/index.html`, `style.css`, and the
   canvas plot from `app.js` — they are already built and proven. Swap the
   server API calls for direct engine calls. Port `bands.py` to a JS table.
-  **Band table done** (`browser/bands.js`); the UI itself is not started.
+  **Done** (`browser/index.html`, `style.css`, `app.js`, `bands.js`) — see
+  "P3 status".
 - **P4 — serve it.** Static files on the VPS + nginx + certbot. **HTTPS is
   mandatory** — Web Serial refuses to run outside a secure context.
 
@@ -172,6 +173,68 @@ carry the note "not usable in the US post-repack", but K53 (606–698) and GB
 repack and intersects `US_USABLE`. The computed field is right and the note
 is a generic label; `bands.py` already carries an inline caveat about this
 for GB but not for K53.
+
+## P3 status — the whole app runs, against a fake radio
+
+`browser/index.html` + `style.css` + `app.js`. The HTML and CSS are the web
+UI's, with the parts that only made sense with a server removed: no port
+dropdown (Web Serial uses a native picker), no "Save to Desktop" (no server
+filesystem to save to), no SSE. `paint()` is copied verbatim — it was already
+proven. `scanLoop()` is a port of `webapp.py`'s `scan_worker`, empty-pass
+recovery included, and `rfe.js` gained a `reconnect()` to support it:
+reopening a port the browser has already granted needs no new user gesture,
+so recovery stays unattended exactly as it is in Python.
+
+Verified by installing a **fake Web Serial device that speaks the real wire
+protocol** — `#`-framed commands in, `#C2-F:` config lines and `$S` sweep
+frames out — and driving the page through it. That exercises everything
+except the USB layer: `rfe.js` framing and parsing, `sweep.js`, `stats.js`,
+`export.js`, `bands.js`, and the UI wiring.
+
+What that run showed:
+
+- Connect completes the `C0` handshake and reads back
+  `470.000–476.000 MHz, 112 points, step 54.05 kHz`.
+- Continuous multi-pass scanning accumulates, redraws, and reports
+  `Est. noise floor … · N passes · N bins`.
+- **Band multiselect end to end**: H50 + J8 merged to 534–608 + 614–616 MHz
+  (44 MHz of overlap dropped), scanned as two spans, 2947 bins exported,
+  **zero bins in the 608–614 repack gap**. The plot shades the gap and
+  breaks the trace across it rather than drawing a line through it.
+- CSV downloads client-side as
+  `rf_scan_470-476MHz_181passes_P20_20260801_212801.csv`; every line matches
+  `freq.3f,amp.1f` and every bin sits on the 25 kHz grid.
+- **Auto-recovery fires correctly.** Killing the fake radio mid-scan
+  produced exactly the sequence AGENTS.md records as the correct one:
+
+```
+  Pass 1 returned NO DATA — every chunk timed out.
+  Reopening the port (the only reliable recovery) and retrying…
+  port closed / port open at 500000 baud / device config: …
+  Reconnect succeeded.
+  Average calculator mode enabled.        <- the load-bearing line
+  Pass 1: 470.000–476.000 MHz | …
+```
+
+  `Average calculator mode enabled.` appearing before `Pass 1` is the proof
+  that `passNum = 0` on reconnect works. Without that reset the retry runs
+  on a differently configured radio than the scan started on.
+
+Incidentally confirmed while testing: after 181 dithered passes the exported
+bin spacing includes 25 kHz steps, not only 50/75 kHz — which is the claim
+the unmerged `claude/vibrant-solomon-ba6505` branch makes about dithering
+filling the grid over multiple passes.
+
+**Still not verified: any of it against the real radio.** A fake device that
+implements the protocol correctly cannot catch a place where the protocol
+was decoded wrong, and cannot reproduce timing — the real radio needs ~1s per
+chunk where the fake answers in ~25 ms, so every settle and timeout constant
+in `sweep.js` is still untested in anger.
+
+Deliberately absent, and needing a written decision before anyone adds them:
+Live Mode / waterfall (AGENTS.md forbids it in a browser UI without one) and
+any live per-chunk plotting — `scanPass` emits `chunk_vis` messages and
+nothing consumes them, matching what the proven web UI does.
 
 ## Acceptance
 

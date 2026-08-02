@@ -27,12 +27,18 @@ the room. Same engine, same band picker, live plot, CSV download.
 **Desktop UI** — `python3 rf_scanner.py`. The original Tk app. Still fully
 working and still the home of Live Mode; kept as the fallback.
 
-**Browser-owns-the-radio (in progress, not usable yet)** — `browser/`, a
+**Browser-owns-the-radio (built, not yet hardware-tested)** — `browser/`, a
 port of the engine into JavaScript so a Chrome page can open the RF Explorer
-directly over Web Serial, with no Python on the scanning machine. The engine,
-statistics, CSV export and band table are ported and checked against the
-Python; there is no UI yet and none of it has been driven against the
-hardware. See `docs/PLAN_browser_serial.md`.
+directly over Web Serial, with no Python on the scanning machine. Serve the
+directory over HTTP and open `index.html`:
+
+```bash
+cd browser && python3 -m http.server 8765     # then http://localhost:8765
+```
+
+Feature-complete and driven end to end against a fake serial device, but it
+has never talked to the actual radio — use `webapp.py` for real work until
+that changes. See `docs/PLAN_browser_serial.md`.
 
 > The RF Explorer is a USB device, so **whichever UI you use, the process
 > must run on the machine the radio is plugged into.** The web UI just moves
@@ -118,13 +124,16 @@ rf_scanner/
 ├── webapp.py           # Flask server for the web UI
 ├── web/                # its templates + vanilla-JS frontend (no build step)
 │
-├── browser/            # WIP: the engine in JS, radio opened via Web Serial
+├── browser/            # the engine in JS, radio opened via Web Serial
+│   ├── index.html      #   the UI — no build step, no framework
+│   ├── style.css       #   copied from web/static/
+│   ├── app.js          #   UI wiring, multi-pass loop, plot
 │   ├── rfe.js          #   wire protocol
 │   ├── sweep.js        #   scan_pass/_scan_chunk port
 │   ├── stats.js        #   stats.py port
 │   ├── export.js       #   export.py port + client-side download
 │   ├── bands.js        #   bands.py transcription
-│   └── spike.html      #   bench harness (no UI yet)
+│   └── spike.html      #   protocol bench harness
 │
 ├── AGENTS.md           # how this project is built and what not to build
 ├── docs/               # design decisions — read before the code they describe
