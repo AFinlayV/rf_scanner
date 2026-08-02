@@ -1,6 +1,6 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>RF Explorer — Web Serial spike (P0)</title>
+<title>RF Explorer — Web Serial bench (P0/P1)</title>
 <style>
   body { background:#0f1116; color:#e6e8eb; font:15px/1.5 system-ui; max-width:840px;
          margin:0 auto; padding:1.5rem; }
@@ -18,24 +18,30 @@
   .ok { color:#4fa96a; } .bad { color:#d16060; } .dim { color:#8b949e; }
 </style>
 
-<h1>RF Explorer — Web Serial spike</h1>
-<p class="sub">P0: prove a browser can drive the radio. Open the port, ask for config,
-set a range, read one sweep. Chrome or Edge only.</p>
+<h1>RF Explorer — Web Serial bench</h1>
+<p class="sub">P0: prove a browser can drive the radio (one raw sweep).
+P1: run a full chunked pass through the ported engine and compare it against
+what <code>webapp.py</code> reports for the same span. Chrome or Edge only.</p>
 
 <div>
   <button id="connect">Connect radio…</button>
   <button id="sweep" disabled>Read one sweep</button>
+  <button id="pass" disabled>Run one pass</button>
+  <button id="stop" disabled>Stop</button>
   <button id="disconnect" disabled>Disconnect</button>
 </div>
 <div style="margin-top:.8rem">
   <label>Start MHz <input id="start" type="number" value="470" step="0.025"></label>
   <label>End MHz <input id="end" type="number" value="476" step="0.025"></label>
+  <label>Chunk MHz <input id="chunk" type="number" value="6" step="0.5"></label>
+  <label>Iter/chunk <input id="iters" type="number" value="5" step="1"></label>
 </div>
 
 <pre id="log"></pre>
 
 <script type="module">
 import { RFExplorer } from './rfe.js';
+import { scanPass } from './sweep.js';
 
 const $ = id => document.getElementById(id);
 const logEl = $('log');
@@ -57,6 +63,7 @@ $('connect').onclick = async () => {
     $('connect').disabled = true;
     await rfe.connect();
     $('sweep').disabled = false;
+    $('pass').disabled = false;
     $('disconnect').disabled = false;
   } catch (e) {
     log('connect failed: ' + e.message, 'bad');
@@ -81,10 +88,57 @@ $('sweep').onclick = async () => {
   $('sweep').disabled = false;
 };
 
+// ── P1: a full pass through the ported engine ────────────────────────────
+
+let controller = null;
+
+$('pass').onclick = async () => {
+  $('pass').disabled = $('sweep').disabled = true;
+  $('stop').disabled = false;
+  controller = new AbortController();
+  const t0 = performance.now();
+  try {
+    const points = await scanPass(rfe, {
+      startMHz: parseFloat($('start').value),
+      endMHz:   parseFloat($('end').value),
+      chunkMHz: parseFloat($('chunk').value),
+      iterations: parseInt($('iters').value, 10),
+      signal: controller.signal,
+      onMessage: m => {
+        if (m.type === 'log') log(m.text);
+        else if (m.type === 'progress') log(m.text, 'dim');
+      },
+    });
+    const secs = ((performance.now() - t0) / 1000).toFixed(1);
+    if (!points.length) { log(`pass returned NO DATA after ${secs}s`, 'bad'); }
+    else {
+      const amps = points.map(p => p[1]);
+      log(`pass complete in ${secs}s — ${points.length} bins`, 'ok');
+      log(`  span ${points[0][0].toFixed(3)} – ${points[points.length-1][0].toFixed(3)} MHz`, 'dim');
+      log(`  floor ${Math.min(...amps).toFixed(1)}  peak ${Math.max(...amps).toFixed(1)} dBm`, 'dim');
+      const top = [...points].sort((a, b) => b[1] - a[1]).slice(0, 5)
+        .map(([f, a]) => `${f.toFixed(3)} MHz  ${a.toFixed(1)} dBm`);
+      log('  strongest 5:\n    ' + top.join('\n    '), 'dim');
+      // Compare these against webapp.py over the same span — bins, span,
+      // floor and peaks should line up. That is the P1 acceptance check.
+    }
+  } catch (e) {
+    log('pass failed: ' + e.message, 'bad');
+  }
+  controller = null;
+  $('stop').disabled = true;
+  $('pass').disabled = $('sweep').disabled = false;
+};
+
+$('stop').onclick = () => { controller?.abort(); log('stop requested…', 'dim'); };
+
 $('disconnect').onclick = async () => {
+  controller?.abort();
   await rfe.disconnect();
   $('connect').disabled = false;
   $('sweep').disabled = true;
+  $('pass').disabled = true;
+  $('stop').disabled = true;
   $('disconnect').disabled = true;
 };
 </script>

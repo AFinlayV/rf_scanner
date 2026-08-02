@@ -93,6 +93,32 @@ export class RFExplorer {
     this.buf = merged.length > 1 << 18 ? merged.slice(-(1 << 17)) : merged;
   }
 
+  // ── stream hygiene ───────────────────────────────────────────────────
+
+  /** Drop every byte received but not yet parsed. Returns how many.
+   *
+   * scanner.py flushes the serial buffer at the start of a pass because a
+   * stopped scan leaves the radio streaming into a buffer nobody drains,
+   * and the parser never re-syncs from a truncated message. Here the OS
+   * buffer is drained continuously by _readLoop, so the stale bytes sit in
+   * this.buf instead — same hazard, different place.
+   */
+  resetStream() {
+    const n = this.buf.length;
+    this.buf = new Uint8Array(0);
+    return n;
+  }
+
+  /** Turn on the on-device averaging calculator (eCalculator.AVG = 2). */
+  async setAverageCalculator() {
+    await this.send('C+' + String.fromCharCode(2));
+  }
+
+  /** Wait for the next sweep frame; returns its raw amplitude bytes. */
+  async nextSweep(timeoutMs = 6000) {
+    return this._nextSweepRaw(timeoutMs);
+  }
+
   // ── framing ──────────────────────────────────────────────────────────
   // Pull the next complete message out of this.buf, or null.
   //   '#' → a text line terminated by \r\n
