@@ -1,4 +1,9 @@
-# RF Scanner
+# RF Scanner — DEPRECATED (2026-09-27)
+
+> **Frozen. Do not use for new work.** Replaced by **SoundBase** driving a
+> **tinySA** directly. The domain knowledge lives in
+> `../_roadcase/riders/rf-coordination.md`. See `AGENTS.md` for the full
+> deprecation note.
 
 A macOS desktop tool for RF spectrum scanning with the Seeed RF Explorer. Built for live sound engineers doing wireless frequency coordination.
 
